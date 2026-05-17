@@ -153,20 +153,21 @@ body {
   width: 100%; 
   border-collapse: collapse; 
   white-space: nowrap; 
-  font-size: 0.80rem;
 }
 .device-table th { 
-  padding-block: 0.5rem;
+  padding-block: 0.6rem;
   text-align: center; 
   border-bottom: 1px solid var(--border); 
   border-right: 1px solid var(--border); 
+  font-size: 0.95rem;
 }
 .device-table td { 
   padding-inline: 0.6rem;
-  padding-block: 0.2rem; 
+  padding-block: 0.3rem; 
   text-align: left; 
   border-bottom: 1px solid var(--border); 
-  border-right: 1px solid var(--border); 
+  border-right: 1px solid var(--border);
+  font-size: 0.85rem;
 }
 .device-table th { 
   background: var(--light); 
@@ -193,7 +194,7 @@ body {
 /* QR Section */
 .qr-section { 
   text-align: center; 
-  padding: 1.5rem; 
+  padding: 1rem; 
   background: var(--light); 
   border-radius: 8px; 
   border: 1px solid var(--border); 
