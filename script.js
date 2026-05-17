@@ -3,7 +3,7 @@
 
 // Configuration - UPDATE THESE VALUES
 const USE_HMAC = true; // Set false to use fallback checksum mode only
-const WORKER_SIGN_URL = 'https://invoice-signer.your-subdomain.workers.dev/sign'; // ← Your Worker URL
+const WORKER_SIGN_URL = 'https://invoice-gen-qr-system.shariful7972-b66.workers.dev/sign'; // ← Your Worker URL
 
 document.getElementById('inv-date').textContent = new Date().toLocaleDateString('en-US', {
   year: 'numeric', month: 'long', day: 'numeric'
