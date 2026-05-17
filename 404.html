@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Page Not Found | TechMobile Invoices</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .error-container { max-width: 600px; margin: 4rem auto; text-align: center; padding: 2rem; }
+    .error-code { font-size: 4rem; font-weight: bold; color: var(--primary); margin-bottom: 1rem; }
+    .error-actions { margin-top: 2rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div class="error-container">
+    <div class="error-code">404</div>
+    <h1>Page Not Found</h1>
+    <p style="color: #64748b; margin: 1rem 0;">The invoice verification link may be expired, invalid, or mistyped.</p>
+    <div class="error-actions">
+      <a href="/" class="btn-primary">🏠 Create New Invoice</a>
+      <button class="btn-secondary" onclick="window.history.back()">← Go Back</button>
+    </div>
+    <p style="margin-top: 2rem; font-size: 0.85rem; color: #64748b;">
+      Tip: QR verification links expire after 24 hours for security.
+    </p>
+  </div>
+</body>
+</html>
