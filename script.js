@@ -1,55 +1,50 @@
 // ⚠️ SECURITY DISCLAIMER: Base64/Checksums protect against casual URI modifications. 
 // For high-value deployments, HMAC signing via Cloudflare Worker is enabled below.
 
-// Configuration - UPDATE THESE VALUES
-const USE_HMAC = true; // Set false to use fallback checksum mode only
-const WORKER_SIGN_URL = 'https://invoice-gen-qr-system.shariful7972-b66.workers.dev/sign'; // ← Your Worker URL
+// ==================== CONFIGURATION ====================
+const USE_HMAC = false; // ← Keep FALSE until Worker is deployed
+const WORKER_SIGN_URL = 'https://invoice-gen-qr-system.shariful7972-b66.workers.dev/sign';
 
-// 🌓 Auto-detect system theme preference on load
+// ==================== DOM ELEMENTS (Define ONCE at top) ====================
+const form = document.getElementById('invoice-form');
+const itemsContainer = document.getElementById('form-items-container');
+const addItemBtn = document.getElementById('add-item-btn');
+const themeToggle = document.getElementById('theme-toggle');
+const qrContainer = document.getElementById('qr-container');
+const invoiceItemsTbody = document.getElementById('invoice-items-tbody');
+
+// ==================== THEME HANDLING ====================
 function detectSystemTheme() {
-  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
-  }
-  return 'light';
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-// Apply system theme on initial load
+// Apply theme on load
 const savedTheme = localStorage.getItem('invoice-theme');
-const systemTheme = detectSystemTheme();
-const initialTheme = savedTheme || systemTheme;
-document.documentElement.setAttribute('data-theme', initialTheme);
+document.documentElement.setAttribute('data-theme', savedTheme || detectSystemTheme());
 
 // Listen for system theme changes
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
   const newTheme = e.matches ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', newTheme);
   localStorage.setItem('invoice-theme', newTheme);
 });
 
-// Update theme toggle to save preference
-themeToggle.addEventListener('click', () => {
-  const currentTheme = document.documentElement.getAttribute('data-theme');
-  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', newTheme);
-  localStorage.setItem('invoice-theme', newTheme);
-});
+// Theme toggle button
+if (themeToggle) {
+  themeToggle.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('invoice-theme', next);
+  });
+}
 
+// Set invoice date
 document.getElementById('inv-date').textContent = new Date().toLocaleDateString('en-US', {
   year: 'numeric', month: 'long', day: 'numeric'
 });
 
-const form = document.getElementById('invoice-form');
-const itemsContainer = document.getElementById('form-items-container');
-const addItemBtn = document.getElementById('add-item-btn');
-const themeToggle = document.getElementById('theme-toggle');
-
-// 🌗 Theme Management
-themeToggle.addEventListener('click', () => {
-  const currentTheme = document.documentElement.getAttribute('data-theme');
-  document.documentElement.setAttribute('data-theme', currentTheme === 'dark' ? 'light' : 'dark');
-});
-
-// 🛡️ XSS Mitigation: HTML Escaping Helper
+// ==================== UTILITIES ====================
 function escapeHtml(str) {
   if (!str) return '';
   const div = document.createElement('div');
@@ -57,11 +52,26 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// 📦 Dynamic Row Injector
+function generateChecksum(str) {
+  return str.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 9999;
+}
+
+function toUrlSafeBase64(str) {
+  return btoa(unescape(encodeURIComponent(str)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function generateFallbackPayload(obj) {
+  const json = JSON.stringify(obj);
+  const checksum = generateChecksum(json);
+  const b64 = toUrlSafeBase64(json);
+  return `${b64}.${checksum}.fallback`;
+}
+
+// ==================== DYNAMIC ITEM ROWS ====================
 function createItemRow(name = '', idVal = '', qty = 1, price = '') {
   const div = document.createElement('div');
   div.className = 'item-row';
-  
   div.innerHTML = `
     <input type="text" placeholder="Item name" class="row-name" value="${escapeHtml(name)}" required aria-label="Item name">
     <input type="text" placeholder="Serial/IMEI (Optional)" class="row-serial" value="${escapeHtml(idVal)}" aria-label="Serial or IMEI">
@@ -73,89 +83,69 @@ function createItemRow(name = '', idVal = '', qty = 1, price = '') {
 }
 
 // Initialize form
-addItemBtn.addEventListener('click', () => createItemRow());
-if (itemsContainer.children.length === 0) {
-  createItemRow('Samsung Galaxy S24 Ultra', 'IMEI: 358765432109876', 1, '1299.00');
+addItemBtn?.addEventListener('click', () => createItemRow());
+if (itemsContainer && itemsContainer.children.length === 0) {
+  createItemRow('Samsung Galaxy S24 Ultra', 'IMEI: 358765432109876', 1, '1099.00');
 }
 
-// 🛡️ Lightweight Payload Integrity Checksum (fallback mode)
-function generateChecksum(str) {
-  return str.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 9999;
-}
-
-// Encode URL-Safe Base64
-function toUrlSafeBase64(str) {
-  return btoa(unescape(encodeURIComponent(str)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-// Fallback payload encoder (for offline/Worker-down scenarios)
-function generateFallbackPayload(obj) {
-  const jsonString = JSON.stringify(obj);
-  const checkToken = generateChecksum(jsonString);
-  const urlSafeB64 = toUrlSafeBase64(jsonString);
-  return `${urlSafeB64}.${checkToken}.fallback`;
-}
-
-// 🔄 Master Render Engine
+// ==================== INVOICE RENDERING ====================
 async function renderInvoice(e) {
   if (e) e.preventDefault();
 
-  const id = document.getElementById('input-id').value.trim();
-  const buyer = document.getElementById('input-buyer').value.trim();
-  const phone = document.getElementById('input-phone').value.trim();
-  const email = document.getElementById('input-email').value.trim();
-  const taxRate = parseFloat(document.getElementById('input-tax').value) || 0;
+  // Gather form values
+  const id = document.getElementById('input-id')?.value.trim() || '';
+  const buyer = document.getElementById('input-buyer')?.value.trim() || '';
+  const phone = document.getElementById('input-phone')?.value.trim() || '';
+  const email = document.getElementById('input-email')?.value.trim() || '';
+  const taxRate = parseFloat(document.getElementById('input-tax')?.value) || 0;
 
+  // Process items
   const itemRows = document.querySelectorAll('.item-row');
   const items = [];
   let subtotal = 0;
-  let validationPassed = true;
+  let valid = true;
 
-  const invoiceItemsTbody = document.getElementById('invoice-items-tbody');
   invoiceItemsTbody.innerHTML = '';
 
   itemRows.forEach(row => {
-    const name = row.querySelector('.row-name').value.trim();
-    const serial = row.querySelector('.row-serial').value.trim();
-    const qty = parseInt(row.querySelector('.row-qty').value) || 1;
-    const unitPrice = parseFloat(row.querySelector('.row-price').value) || 0;
-    
+    const name = row.querySelector('.row-name')?.value.trim() || '';
+    const serial = row.querySelector('.row-serial')?.value.trim() || '';
+    const qty = parseInt(row.querySelector('.row-qty')?.value) || 1;
+    const unitPrice = parseFloat(row.querySelector('.row-price')?.value) || 0;
+
     if (unitPrice <= 0) {
-      row.querySelector('.row-price').setCustomValidity('Price must be greater than 0');
-      row.querySelector('.row-price').reportValidity();
-      validationPassed = false;
+      row.querySelector('.row-price')?.setCustomValidity('Price must be > 0');
+      row.querySelector('.row-price')?.reportValidity();
+      valid = false;
       return;
-    } else {
-      row.querySelector('.row-price').setCustomValidity('');
     }
+    row.querySelector('.row-price')?.setCustomValidity('');
 
     const lineTotal = unitPrice * qty;
     subtotal += lineTotal;
     items.push({ name, serial, qty, unitPrice: `$${unitPrice.toFixed(2)}`, price: `$${lineTotal.toFixed(2)}` });
 
+    // Render table row safely
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>
-        <strong>${escapeHtml(name)}</strong>
-        ${serial ? `<br><small style="color: #64748b;">${escapeHtml(serial)}</small>` : ''}
-      </td>
-      <td style="text-align: center;">${qty}</td>
-      <td style="text-align: right;">${`$${unitPrice.toFixed(2)}`}</td>
-      <td class="text-right"><strong>${`$${lineTotal.toFixed(2)}`}</strong></td>
+      <td><strong>${escapeHtml(name)}</strong>${serial ? `<br><small style="color:#64748b">${escapeHtml(serial)}</small>` : ''}</td>
+      <td style="text-align:center">${qty}</td>
+      <td style="text-align:right">$${unitPrice.toFixed(2)}</td>
+      <td class="text-right"><strong>$${lineTotal.toFixed(2)}</strong></td>
     `;
     invoiceItemsTbody.appendChild(tr);
   });
 
-  if (!validationPassed) return;
-  if (items.length === 0) {
-    alert('Please add at least one item to the invoice.');
+  if (!valid || items.length === 0) {
+    if (items.length === 0) alert('Please add at least one item.');
     return;
   }
 
+  // Calculate totals
   const taxAmount = subtotal * (taxRate / 100);
   const total = subtotal + taxAmount;
 
+  // Update invoice display
   document.getElementById('inv-id').textContent = id;
   document.getElementById('inv-buyer').textContent = buyer;
   document.getElementById('inv-phone').textContent = phone;
@@ -164,136 +154,83 @@ async function renderInvoice(e) {
   document.getElementById('inv-tax-amount').textContent = `$${taxAmount.toFixed(2)}`;
   document.getElementById('inv-total').textContent = `$${total.toFixed(2)}`;
 
-  const payloadObject = { 
-    id, 
-    buyer, 
-    total: `$${total.toFixed(2)}`, 
-    items, 
-    status: 'verified',
-    timestamp: Date.now()
+  // Build payload
+  const payload = { 
+    id, buyer, total: `$${total.toFixed(2)}`, items, 
+    status: 'verified', timestamp: Date.now() 
   };
 
-  let securedPayload;
-  const qrContainer = document.getElementById('qr-container');
-  
-  // Try HMAC first, but auto-fallback if it fails
-  if (USE_HMAC) {
-    qrContainer.innerHTML = '<div class="qr-loading">🔐 Requesting signature...</div>';
-    
-    try {
-      console.log('📡 Attempting Worker sign request to:', WORKER_SIGN_URL);
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-      
-      const response = await fetch(WORKER_SIGN_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceData: payloadObject, timestamp: payloadObject.timestamp }),
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Worker error response:', response.status, errorText);
-        throw new Error(`Worker returned ${response.status}: ${errorText}`);
-      }
-      
-      const data = await response.json();
-      console.log('✅ Worker response received:', data);
-      
-      if (!data.signedPayload) {
-        throw new Error('Worker returned empty signedPayload');
-      }
-      
-      securedPayload = data.signedPayload;
-      
-      const expiresAt = new Date(payloadObject.timestamp + 24 * 60 * 60 * 1000);
-      document.querySelector('.qr-note').innerHTML = 
-        `Scan to verify. <strong>Link expires:</strong> ${expiresAt.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
-        
-    } catch (err) {
-      console.warn('⚠️ HMAC signing failed, falling back to checksum mode:', err.message);
-      console.log('💡 Tip: Check if Worker is deployed at:', WORKER_SIGN_URL);
-      
-      securedPayload = generateFallbackPayload(payloadObject);
-      document.querySelector('.qr-note').textContent = 
-        'Scan to verify. (Offline mode - checksum validation only)';
-      document.querySelector('.qr-note').style.color = '#f59e0b'; // Orange warning
-    }
-  } else {
-    securedPayload = generateFallbackPayload(payloadObject);
-  }
+  // Generate secured payload (checksum mode since USE_HMAC = false)
+  const securedPayload = generateFallbackPayload(payload);
 
-  // Generate QR Code
+  // Build verification URL
   const baseUrl = window.location.origin + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
   const verifyURL = `${baseUrl}verify.html?payload=${encodeURIComponent(securedPayload)}`;
-  
-  console.log('🔗 Verification URL:', verifyURL);
+  console.log('🔗 Verify URL:', verifyURL);
 
+  // Generate QR Code
   qrContainer.innerHTML = '<div class="qr-loading">🔄 Generating QR...</div>';
 
-  try {
+  if (typeof QRCode !== 'undefined') {
     QRCode.toCanvas(verifyURL, { width: 160, margin: 0 }, (err, canvas) => {
       if (err) {
-        console.error('❌ QR Generation Error:', err);
-        qrContainer.innerHTML = `<div style="color:#ef4444;padding:1rem">
-          <strong>❌ QR Error</strong><br>
+        console.error('❌ QR Error:', err);
+        qrContainer.innerHTML = `<div style="color:#ef4444;padding:1rem;text-align:center">
+          <strong>❌ QR Generation Failed</strong><br>
           <small>${err.message}</small><br>
           <button onclick="renderInvoice()" class="btn-secondary" style="margin-top:0.5rem">🔄 Retry</button>
         </div>`;
       } else {
         qrContainer.innerHTML = '';
         qrContainer.appendChild(canvas);
-        console.log('✅ QR Code generated successfully');
+        console.log('✅ QR generated');
       }
     });
-  } catch (err) {
-    console.error('❌ QR Library Error:', err);
-    qrContainer.innerHTML = '<span style="color:#ef4444">❌ QR Library Error</span>';
+  } else {
+    qrContainer.innerHTML = '<span style="color:#ef4444">❌ QR library not loaded</span>';
+    console.error('QRCode library not found - check CDN link in HTML');
   }
 }
 
-// 📋 Clipboard Copy with Fallback
+// ==================== CLIPBOARD COPY ====================
 function fallbackCopy(text) {
-  const textarea = document.createElement('textarea');
-  textarea.value = text;
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  textarea.style.left = '-9999px';
-  document.body.appendChild(textarea);
-  textarea.focus();
-  textarea.select();
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0;left:-9999px';
+  document.body.appendChild(ta);
+  ta.select();
   try {
     document.execCommand('copy');
-    alert('✅ Invoice data copied to clipboard!');
+    alert('✅ Copied to clipboard!');
   } catch {
-    alert('⚠️ Copy failed. Please select and copy manually.');
+    alert('⚠️ Copy failed. Select text manually.');
   }
-  document.body.removeChild(textarea);
+  document.body.removeChild(ta);
 }
 
 window.copyInvoiceData = function() {
   const data = JSON.stringify({
-    invoiceId: document.getElementById('input-id').value,
-    buyer: document.getElementById('input-buyer').value,
-    grandTotal: document.getElementById('inv-total').textContent,
+    invoiceId: document.getElementById('input-id')?.value,
+    buyer: document.getElementById('input-buyer')?.value,
+    grandTotal: document.getElementById('inv-total')?.textContent,
     generatedAt: new Date().toISOString()
   }, null, 2);
   
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(data)
-      .then(() => alert('✅ Invoice summary copied to clipboard!'))
+      .then(() => alert('✅ Copied!'))
       .catch(() => fallbackCopy(data));
   } else {
     fallbackCopy(data);
   }
 };
 
-// Event listeners
-form.addEventListener('submit', renderInvoice);
+// ==================== EVENT LISTENERS ====================
+form?.addEventListener('submit', renderInvoice);
 
 // Initial render
-renderInvoice();
+document.addEventListener('DOMContentLoaded', () => {
+  renderInvoice();
+});
+// Fallback if DOM already loaded
+if (document.readyState !== 'loading') renderInvoice();
