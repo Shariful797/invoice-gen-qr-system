@@ -1,0 +1,18 @@
+name = "invoice-gen-qr-system"
+main = "index.js"
+compatibility_date = "2026-05-17"
+
+# Optional: Bind to a KV namespace for audit logs
+# kv_namespaces = [
+#   { binding = "AUDIT_LOGS", id = "your-kv-id" }
+# ]
+
+[vars]
+# Fallback for local testing - override with wrangler secret put
+# HMAC_SECRET = "your-32-char-min-secret-here"
+
+[triggers]
+crons = []
+
+[env.production]
+# Production-specific overrides can go here
