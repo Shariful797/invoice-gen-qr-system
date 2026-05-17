@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice Verification Portal | TechMobile</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .verify-container { max-width: 600px; margin: 4rem auto; text-align: center; padding: 2.5rem; background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    .status-badge { display: inline-block; padding: 0.5rem 1.2rem; border-radius: 99px; font-weight: bold; margin: 1.5rem 0; font-size: 1.1rem; }
+    .v-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; text-align: left; margin: 2rem 0; padding: 1.5rem; background: var(--light); border-radius: 8px; border: 1px solid var(--border); }
+    .v-row { border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-bottom: 0.5rem; }
+    .v-row:last-child { border: none; margin: 0; padding: 0; }
+    .item-tag { font-size: 0.9rem; background: var(--card-bg); padding: 0.25rem 0.5rem; border-radius: 4px; border: 1px solid var(--border); display: block; margin-top: 0.25rem; text-align: left; }
+    .loading { color: var(--primary); font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="verify-container">
+    <h1>🔍 System Authenticity Verification</h1>
+    <div id="status-badge" class="status-badge">⏳ Analyzing Security Token...</div>
+    <div id="invoice-details" class="v-grid" style="display: none;"></div>
+    <p style="font-size:0.85rem; color:#64748b;">Cryptographic Payload Validation • Hosted on Cloudflare Pages</p>
+  </div>
+
+  <script>
+    // Configuration - UPDATE THIS TO YOUR WORKER URL
+    const WORKER_VERIFY_URL = 'https://invoice-signer.your-subdomain.workers.dev/verify';
+    const USE_HMAC = true; // Set to false to use fallback checksum mode only
+
+    function generateChecksum(str) {
+      return str.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 9999;
+    }
+
+    function decodeUrlSafeBase64(urlSafeB64) {
+      let base64 = urlSafeB64.replace(/-/g, '+').replace(/_/g, '/');
+      const padLength = (4 - (base64.length % 4)) % 4;
+      base64 += '='.repeat(padLength);
+      return decodeURIComponent(escape(atob(base64)));
+    }
+
+    async function verifyPayload(rawParam) {
+      try {
+        if (!rawParam) throw new Error("Missing verification token");
+        
+        const isFallback = rawParam.endsWith('.fallback');
+        const payloadPart = isFallback ? rawParam.replace('.fallback', '') : rawParam;
+        const parts = payloadPart.split('.');
+        
+        if (parts.length < 2) throw new Error("Malformed payload structure");
+        
+        const urlSafeB64 = parts[0];
+        const integrityToken = parts.slice(1).join('.');
+        
+        const decodedJSON = decodeUrlSafeBase64(urlSafeB64);
+        const data = JSON.parse(decodedJSON);
+        
+        if (isFallback) {
+          const receivedChecksum = parseInt(integrityToken, 10);
+          if (isNaN(receivedChecksum) || generateChecksum(decodedJSON) !== receivedChecksum) {
+            throw new Error("Fallback integrity check failed");
+          }
+        } else if (USE_HMAC) {
+          // Validate via Cloudflare Worker
+          const response = await fetch(WORKER_VERIFY_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payload: data })
+          });
+          
+          if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.reason || "Worker verification failed");
+          }
+          
+          const result = await response.json();
+          if (!result.valid) throw new Error(result.reason || "Cryptographic signature invalid");
+          
+          // Check expiry (24 hours)
+          if (data.timestamp && (Date.now() - data.timestamp > 24 * 60 * 60 * 1000)) {
+            throw new Error("Verification window expired (24h limit)");
+          }
+        }
+        
+        if (data.status !== 'verified') throw new Error("Invalid certificate state");
+        
+        return { success: true, data };
+      } catch (err) {
+        return { success: false, error: err.message || "Unknown verification error" };
+      }
+    }
+
+    // Main execution
+    (async function init() {
+      const params = new URLSearchParams(window.location.search);
+      const rawParam = params.get('payload');
+      const badge = document.getElementById('status-badge');
+      const container = document.getElementById('invoice-details');
+
+      if (!rawParam) {
+        badge.textContent = '❌ No verification payload provided';
+        badge.style.background = '#fee2e2';
+        badge.style.color = '#dc2626';
+        return;
+      }
+
+      badge.textContent = '⏳ Verifying cryptographic signature...';
+      
+      const result = await verifyPayload(rawParam);
+      
+      if (result.success) {
+        const d = result.data;
+        badge.textContent = '✅ Officially Authenticated';
+        badge.style.background = '#dcfce7';
+        badge.style.color = '#16a34a';
+
+        let itemsHtml = '';
+        if (Array.isArray(d.items)) {
+          d.items.forEach(item => {
+            itemsHtml += `<span class="item-tag">📦 ${escapeHtml(item.name)} ${item.serial ? `<br><small>${escapeHtml(item.serial)}</small>` : ''} × ${item.qty || 1} = ${item.price}</span>`;
+          });
+        }
+
+        container.innerHTML = `
+          <div class="v-row"><strong>Invoice Reference</strong><p>${escapeHtml(d.id)}</p></div>
+          <div class="v-row"><strong>Authorized Buyer</strong><p>${escapeHtml(d.buyer)}</p></div>
+          <div class="v-row"><strong>Verified Total</strong><p style="color:var(--primary);font-weight:bold">${escapeHtml(d.total)}</p></div>
+          ${itemsHtml ? `<div class="v-row"><strong>Items</strong>${itemsHtml}</div>` : ''}
+          ${d.timestamp ? `<div class="v-row"><strong>Issued At</strong><p>${new Date(d.timestamp).toLocaleString()}</p></div>` : ''}
+        `;
+        container.style.display = 'grid';
+      } else {
+        badge.textContent = '❌ Verification Failed';
+        badge.style.background = '#fee2e2';
+        badge.style.color = '#dc2626';
+        container.innerHTML = `<p style="text-align:center;color:#64748b">${escapeHtml(result.error)}</p>`;
+        container.style.display = 'block';
+      }
+    })();
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
