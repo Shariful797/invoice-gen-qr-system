@@ -6,14 +6,48 @@
   <title>Secure Invoice Generator | TechMobile</title>
   <link rel="stylesheet" href="style.css">
   
-  <!-- QR Code Library - Using reliable CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <!-- QR Code Library - Most reliable option -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode_UTF-8.min.js"></script>
   
-  <!-- Fallback if primary CDN fails -->
+  <!-- Wrapper to make it compatible -->
   <script>
-    if (typeof QRCode === 'undefined') {
-      document.write('<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"><\/script>');
-    }
+    // Simple QRCode wrapper for qrcode-generator library
+    window.QRCode = {
+      toCanvas: function(url, options, callback) {
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          const size = options.width || 160;
+          
+          const qr = qrcode(options.errorCorrectionLevel || 'M', 'Auto');
+          qr.addData(url);
+          qr.make();
+          
+          canvas.width = size;
+          canvas.height = size;
+          
+          const moduleCount = qr.getModuleCount();
+          const cellSize = size / moduleCount;
+          
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, size, size);
+          
+          ctx.fillStyle = '#000000';
+          for (let row = 0; row < moduleCount; row++) {
+            for (let col = 0; col < moduleCount; col++) {
+              if (qr.isDark(row, col)) {
+                ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+              }
+            }
+          }
+          
+          callback(null, canvas);
+        } catch (err) {
+          callback(err, null);
+        }
+      }
+    };
   </script>
 </head>
 <body>
