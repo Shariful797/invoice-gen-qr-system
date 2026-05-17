@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+*.local
+
+# Build/output (if any)
+dist/
+build/
+
+# Worker secrets (never commit these)
+worker/.env
+worker/wrangler.toml.local
+
+# Logs
+*.log
