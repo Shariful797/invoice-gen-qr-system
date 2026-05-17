@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secure Invoice Generator | TechMobile</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" defer></script>
+</head>
+<body>
+
+  <!-- ⚙️ CONTROL PANEL (Hidden on Print) -->
+  <div class="no-print generator-panel">
+    <div class="panel-header">
+      <h2>⚙️ Master Control Panel</h2>
+      <button id="theme-toggle" class="btn-secondary" aria-label="Toggle dark mode">🌗 Theme</button>
+    </div>
+    
+    <form id="invoice-form">
+      <div class="form-grid">
+        <label>Invoice #: <input type="text" id="input-id" value="INV-2026-0001" required></label>
+        <label>Buyer Name: <input type="text" id="input-buyer" value="Sharif Ahmed" required></label>
+        <label>Phone: <input type="tel" id="input-phone" value="+1 555 019 2843" required></label>
+        <label>Email: <input type="email" id="input-email" value="sharif@example.com" required></label>
+        <label>Tax Rate (%): <input type="number" id="input-tax" value="8" step="0.1" min="0" max="100" required></label>
+      </div>
+
+      <div class="items-management">
+        <h3>📦 Line Items</h3>
+        <div id="form-items-container"></div>
+        <button type="button" class="btn-secondary" id="add-item-btn" style="margin-top: 0.5rem;">＋ Add Item</button>
+      </div>
+
+      <button type="submit" class="btn-primary" style="width: 100%; margin-top: 1.5rem;">🔄 Generate Secured Invoice & QR</button>
+    </form>
+  </div>
+
+  <!-- 📄 THE INVOICE DOCUMENT -->
+  <div class="invoice-container" id="invoice">
+    <header class="invoice-header">
+      <div class="brand">
+        <h1>📱 TechMobile Store</h1>
+        <p>Premium Devices & Verified Sales</p>
+      </div>
+      <div class="invoice-meta">
+        <p><strong>Invoice #:</strong> <span id="inv-id"></span></p>
+        <p><strong>Date:</strong> <span id="inv-date"></span></p>
+      </div>
+    </header>
+
+    <section class="info-grid">
+      <div class="info-box">
+        <h3>🧑‍💼 Seller</h3>
+        <p>TechMobile LLC</p>
+        <p>123 Commerce Ave, NY</p>
+        <p>support@techmobile.example</p>
+      </div>
+      <div class="info-box">
+        <h3>👤 Buyer</h3>
+        <p id="inv-buyer"></p>
+        <p id="inv-phone"></p>
+        <p id="inv-email"></p>
+      </div>
+    </section>
+
+    <div class="table-responsive">
+      <table class="device-table">
+        <thead>
+          <tr>
+            <th>Item / Description</th>
+            <th>Qty</th>
+            <th>Unit Price</th>
+            <th class="text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody id="invoice-items-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="totals">
+      <p>Subtotal: <span id="inv-subtotal"></span></p>
+      <p>Tax: <span id="inv-tax-amount"></span></p>
+      <p class="total-row">Grand Total: <span id="inv-total"></span></p>
+    </div>
+
+    <div class="qr-section">
+      <h3>📲 Scan to Verify Statement Authenticity</h3>
+      <div id="qr-container"></div>
+      <p class="qr-note">Scan with any smartphone camera. Valid only if target domain matches this official host.</p>
+    </div>
+
+    <footer class="invoice-footer">
+      <p>Thank you for your business. This document is integrity-protected with cryptographic verification.</p>
+      <p>Warranty: 12 Months Hardware | Return Window: 7 Days</p>
+    </footer>
+  </div>
+
+  <!-- 🛠️ ACTIONS FOOTER (Hidden on Print) -->
+  <div class="actions no-print">
+    <button class="btn-primary" onclick="window.print()" aria-label="Print or save invoice as PDF">🖨️ Print / Save PDF</button>
+    <button class="btn-secondary" onclick="copyInvoiceData()" aria-label="Copy raw invoice JSON data">📋 Copy Data JSON</button>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
