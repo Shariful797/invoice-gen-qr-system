@@ -5,50 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Secure Invoice Generator | TechMobile</title>
   <link rel="stylesheet" href="style.css">
-  
-  <!-- QR Code Library - Most reliable option -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode_UTF-8.min.js"></script>
-  
-  <!-- Wrapper to make it compatible -->
-  <script>
-    // Simple QRCode wrapper for qrcode-generator library
-    window.QRCode = {
-      toCanvas: function(url, options, callback) {
-        try {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          const size = options.width || 160;
-          
-          const qr = qrcode(options.errorCorrectionLevel || 'M', 'Auto');
-          qr.addData(url);
-          qr.make();
-          
-          canvas.width = size;
-          canvas.height = size;
-          
-          const moduleCount = qr.getModuleCount();
-          const cellSize = size / moduleCount;
-          
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, size, size);
-          
-          ctx.fillStyle = '#000000';
-          for (let row = 0; row < moduleCount; row++) {
-            for (let col = 0; col < moduleCount; col++) {
-              if (qr.isDark(row, col)) {
-                ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
-              }
-            }
-          }
-          
-          callback(null, canvas);
-        } catch (err) {
-          callback(err, null);
-        }
-      }
-    };
-  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
