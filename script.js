@@ -5,6 +5,35 @@
 const USE_HMAC = true; // Set false to use fallback checksum mode only
 const WORKER_SIGN_URL = 'https://invoice-gen-qr-system.shariful7972-b66.workers.dev/sign'; // ← Your Worker URL
 
+// 🌓 Auto-detect system theme preference on load
+function detectSystemTheme() {
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    return 'dark';
+  }
+  return 'light';
+}
+
+// Apply system theme on initial load
+const savedTheme = localStorage.getItem('invoice-theme');
+const systemTheme = detectSystemTheme();
+const initialTheme = savedTheme || systemTheme;
+document.documentElement.setAttribute('data-theme', initialTheme);
+
+// Listen for system theme changes
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+  const newTheme = e.matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', newTheme);
+  localStorage.setItem('invoice-theme', newTheme);
+});
+
+// Update theme toggle to save preference
+themeToggle.addEventListener('click', () => {
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', newTheme);
+  localStorage.setItem('invoice-theme', newTheme);
+});
+
 document.getElementById('inv-date').textContent = new Date().toLocaleDateString('en-US', {
   year: 'numeric', month: 'long', day: 'numeric'
 });
@@ -105,7 +134,6 @@ async function renderInvoice(e) {
     subtotal += lineTotal;
     items.push({ name, serial, qty, unitPrice: `$${unitPrice.toFixed(2)}`, price: `$${lineTotal.toFixed(2)}` });
 
-    // Render safely with escaped HTML
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>
@@ -128,7 +156,6 @@ async function renderInvoice(e) {
   const taxAmount = subtotal * (taxRate / 100);
   const total = subtotal + taxAmount;
 
-  // Update invoice display
   document.getElementById('inv-id').textContent = id;
   document.getElementById('inv-buyer').textContent = buyer;
   document.getElementById('inv-phone').textContent = phone;
@@ -137,47 +164,64 @@ async function renderInvoice(e) {
   document.getElementById('inv-tax-amount').textContent = `$${taxAmount.toFixed(2)}`;
   document.getElementById('inv-total').textContent = `$${total.toFixed(2)}`;
 
-  // Build payload object
   const payloadObject = { 
     id, 
     buyer, 
     total: `$${total.toFixed(2)}`, 
     items, 
     status: 'verified',
-    timestamp: Date.now() // For expiry validation
+    timestamp: Date.now()
   };
 
   let securedPayload;
+  const qrContainer = document.getElementById('qr-container');
   
+  // Try HMAC first, but auto-fallback if it fails
   if (USE_HMAC) {
-    const qrContainer = document.getElementById('qr-container');
-    qrContainer.innerHTML = '<div class="qr-loading">🔐 Requesting cryptographic signature...</div>';
+    qrContainer.innerHTML = '<div class="qr-loading">🔐 Requesting signature...</div>';
     
     try {
+      console.log('📡 Attempting Worker sign request to:', WORKER_SIGN_URL);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
       const response = await fetch(WORKER_SIGN_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceData: payloadObject, timestamp: payloadObject.timestamp })
+        body: JSON.stringify({ invoiceData: payloadObject, timestamp: payloadObject.timestamp }),
+        signal: controller.signal
       });
       
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Worker returned ${response.status}`);
+        const errorText = await response.text();
+        console.error('❌ Worker error response:', response.status, errorText);
+        throw new Error(`Worker returned ${response.status}: ${errorText}`);
       }
       
-      const { signedPayload } = await response.json();
-      securedPayload = signedPayload;
+      const data = await response.json();
+      console.log('✅ Worker response received:', data);
       
-      // Update UI with expiry hint
+      if (!data.signedPayload) {
+        throw new Error('Worker returned empty signedPayload');
+      }
+      
+      securedPayload = data.signedPayload;
+      
       const expiresAt = new Date(payloadObject.timestamp + 24 * 60 * 60 * 1000);
       document.querySelector('.qr-note').innerHTML = 
         `Scan to verify. <strong>Link expires:</strong> ${expiresAt.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
         
     } catch (err) {
       console.warn('⚠️ HMAC signing failed, falling back to checksum mode:', err.message);
+      console.log('💡 Tip: Check if Worker is deployed at:', WORKER_SIGN_URL);
+      
       securedPayload = generateFallbackPayload(payloadObject);
       document.querySelector('.qr-note').textContent = 
         'Scan to verify. (Offline mode - checksum validation only)';
+      document.querySelector('.qr-note').style.color = '#f59e0b'; // Orange warning
     }
   } else {
     securedPayload = generateFallbackPayload(payloadObject);
@@ -186,19 +230,30 @@ async function renderInvoice(e) {
   // Generate QR Code
   const baseUrl = window.location.origin + window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
   const verifyURL = `${baseUrl}verify.html?payload=${encodeURIComponent(securedPayload)}`;
+  
+  console.log('🔗 Verification URL:', verifyURL);
 
-  const qrContainer = document.getElementById('qr-container');
-  qrContainer.innerHTML = '<div class="qr-loading">🔄 Generating secure QR...</div>';
+  qrContainer.innerHTML = '<div class="qr-loading">🔄 Generating QR...</div>';
 
-  QRCode.toCanvas(verifyURL, { width: 160, margin: 0 }, (err, canvas) => {
-    if (err) {
-      qrContainer.innerHTML = '<span style="color:#ef4444">❌ QR Generation Error</span>';
-      console.error('QR Error:', err);
-    } else {
-      qrContainer.innerHTML = '';
-      qrContainer.appendChild(canvas);
-    }
-  });
+  try {
+    QRCode.toCanvas(verifyURL, { width: 160, margin: 0 }, (err, canvas) => {
+      if (err) {
+        console.error('❌ QR Generation Error:', err);
+        qrContainer.innerHTML = `<div style="color:#ef4444;padding:1rem">
+          <strong>❌ QR Error</strong><br>
+          <small>${err.message}</small><br>
+          <button onclick="renderInvoice()" class="btn-secondary" style="margin-top:0.5rem">🔄 Retry</button>
+        </div>`;
+      } else {
+        qrContainer.innerHTML = '';
+        qrContainer.appendChild(canvas);
+        console.log('✅ QR Code generated successfully');
+      }
+    });
+  } catch (err) {
+    console.error('❌ QR Library Error:', err);
+    qrContainer.innerHTML = '<span style="color:#ef4444">❌ QR Library Error</span>';
+  }
 }
 
 // 📋 Clipboard Copy with Fallback
