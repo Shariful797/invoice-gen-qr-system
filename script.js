@@ -168,28 +168,28 @@ async function renderInvoice(e) {
   const verifyURL = `${baseUrl}verify.html?payload=${encodeURIComponent(securedPayload)}`;
   console.log('🔗 Verify URL:', verifyURL);
 
-  // Generate QR Code
-  qrContainer.innerHTML = '<div class="qr-loading">🔄 Generating QR...</div>';
+  // Generate QR Code using qrcodejs API
+qrContainer.innerHTML = ''; // Clear container first
 
-  if (typeof QRCode !== 'undefined') {
-    QRCode.toCanvas(verifyURL, { width: 160, margin: 0 }, (err, canvas) => {
-      if (err) {
-        console.error('❌ QR Error:', err);
-        qrContainer.innerHTML = `<div style="color:#ef4444;padding:1rem;text-align:center">
-          <strong>❌ QR Generation Failed</strong><br>
-          <small>${err.message}</small><br>
-          <button onclick="renderInvoice()" class="btn-secondary" style="margin-top:0.5rem">🔄 Retry</button>
-        </div>`;
-      } else {
-        qrContainer.innerHTML = '';
-        qrContainer.appendChild(canvas);
-        console.log('✅ QR generated');
-      }
-    });
-  } else {
-    qrContainer.innerHTML = '<span style="color:#ef4444">❌ QR library not loaded</span>';
-    console.error('QRCode library not found - check CDN link in HTML');
-  }
+try {
+  // qrcodejs uses: new QRCode(element, { text: url, width, height })
+  const qr = new QRCode(qrContainer, {
+    text: verifyURL,
+    width: 160,
+    height: 160,
+    colorDark: "#000000",
+    colorLight: "#ffffff",
+    correctLevel: QRCode.CorrectLevel.M
+  });
+  
+  console.log('✅ QR generated successfully');
+} catch (err) {
+  console.error('❌ QR Generation Error:', err);
+  qrContainer.innerHTML = `<div style="color:#ef4444;padding:1rem;text-align:center">
+    <strong>❌ QR Error</strong><br>
+    <small>${err.message}</small><br>
+    <button onclick="renderInvoice()" class="btn-secondary" style="margin-top:0.5rem">🔄 Retry</button>
+  </div>`;
 }
 
 // ==================== CLIPBOARD COPY ====================
@@ -228,9 +228,18 @@ window.copyInvoiceData = function() {
 // ==================== EVENT LISTENERS ====================
 form?.addEventListener('submit', renderInvoice);
 
-// Initial render
-document.addEventListener('DOMContentLoaded', () => {
+// Initial render - ONLY ONCE on DOM ready
+let initialRenderComplete = false;
+
+function doInitialRender() {
+  if (initialRenderComplete) return; // Prevent double execution
+  initialRenderComplete = true;
   renderInvoice();
-});
-// Fallback if DOM already loaded
-if (document.readyState !== 'loading') renderInvoice();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', doInitialRender);
+} else {
+  // DOM already loaded
+  doInitialRender();
+}
